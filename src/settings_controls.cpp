@@ -1873,7 +1873,9 @@ OverlayPreview::OverlayPreview() = default;
 
 SizeF OverlayPreview::Measure(const SizeF &availableSize)
 {
-    return {availableSize.width, kPreviewHeight};
+    const float rows = static_cast<float>(std::clamp(::KeycastConfig.rows, 1, 5));
+    const float height = rows * (::KeycastConfig.fontSize + 28.0f) + (rows - 1) * 10.0f + 42.0f;
+    return {availableSize.width, (std::max)(kPreviewHeight, height)};
 }
 
 void OverlayPreview::Arrange(const RectF &finalRect)
@@ -1883,7 +1885,16 @@ void OverlayPreview::Arrange(const RectF &finalRect)
 
 void OverlayPreview::EnsureLayouts()
 {
-    layout_.Build(kPreviewSample, (std::max)(1.0f, bounds_.width - 32.0f));
+    auto sample = kPreviewSample;
+    if (::KeycastConfig.rows > 1)
+    {
+        sample.clear();
+        const std::wstring keys = L"ASDFJKLQWERTYUIOPZXCVBNM";
+        for (size_t i = 0; i < 80; ++i)
+            sample.push_back({{std::wstring(1, keys[i % keys.size()])}});
+        sample.push_back({{L"LCtrl", L"C"}});
+    }
+    layout_.Build(sample, (std::max)(1.0f, bounds_.width - 32.0f));
 }
 
 void OverlayPreview::Render(msimeui::DeviceResources &deviceResources)

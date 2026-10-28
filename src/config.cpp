@@ -209,6 +209,8 @@ std::string BuildConfigText()
     out << "show_mouse = " << (c.showMouse ? "true" : "false") << "\n";
     out << "# 无输入后自动隐藏（毫秒）\n";
     out << "fade_ms = " << c.fadeMs << "\n";
+    out << "# 最多显示的按键排数，范围 1–5，当前排放满后向上滚动\n";
+    out << "rows = " << c.rows << "\n";
     out << "# 浮层位置，可选：\"bottom-right\", \"bottom-left\", \"top-right\", \"top-left\"\n";
     out << "position = \"" << EscapeToml(wstring_to_string(c.position)) << "\"\n";
     return out.str();
@@ -228,6 +230,7 @@ void ApplyParsed(const TomlTable &table)
     c.enabled = ParseBool(GetValue(table, "overlay", "enabled", "true"), true);
     c.showMouse = ParseBool(GetValue(table, "overlay", "show_mouse", "true"), true);
     c.fadeMs = ClampInt(ParseInt(GetValue(table, "overlay", "fade_ms", "1500"), 1500), 300, 8000);
+    c.rows = ClampInt(ParseInt(GetValue(table, "overlay", "rows", "1"), 1), 1, 5);
     c.position = ClampPosition(string_to_wstring(GetValue(table, "overlay", "position", "bottom-right")));
 }
 
@@ -373,7 +376,7 @@ void ApplyConfigToRuntime()
         InvalidateRect(::D2DHwnd, nullptr, FALSE);
         if (!::KeycastConfig.enabled)
         {
-            ShowWindow(::D2DHwnd, SW_HIDE);
+            SendMessageW(::D2DHwnd, WM_APP_HIDE_OVERLAY, 0, 0);
         }
     }
     RefreshTrayMenuTheme();

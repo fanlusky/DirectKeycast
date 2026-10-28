@@ -22,6 +22,8 @@ struct OverlayStroke
     std::vector<std::wstring> keys;
     unsigned int repeat = 1;
     bool modifierOnly = false;
+    ULONGLONG updatedAt = 0;
+    bool startsRow = false;
 };
 inline std::vector<OverlayStroke> OverlayHistory;
 inline HWND D2DHwnd = nullptr;
@@ -44,6 +46,7 @@ inline struct AppConfig
     bool enabled = true;
     bool showMouse = true;
     int fadeMs = 1500;
+    int rows = 1;
     std::wstring position = L"bottom-right";
 } KeycastConfig;
 
@@ -61,4 +64,6 @@ inline constexpr UINT WM_APP_SHOW_OVERLAY = WM_APP + 11;
 inline constexpr UINT WM_APP_HIDE_TRAY_MENU = WM_APP + 12;
 inline constexpr UINT WM_APP_OPEN_SETTINGS = WM_APP + 13;
 inline constexpr UINT WM_APP_OPEN_ABOUT = WM_APP + 14;
+inline constexpr UINT_PTR OVERLAY_ANIMATION_TIMER = 1;
+inline constexpr UINT OVERLAY_FADE_DURATION_MS = 300;
 inline constexpr UINT WM_APP_LLKEY = WM_APP + 15;

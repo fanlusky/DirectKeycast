@@ -141,6 +141,14 @@ LRESULT CALLBACK OverlayWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
 
     case WM_SIZE:
         ResizeOverlayRenderTarget(hwnd);
+        InvalidateRect(hwnd, nullptr, FALSE);
+        return 0;
+
+    case WM_ERASEBKGND:
+        return 1;
+
+    case WM_TIMER:
+        if (wParam == OVERLAY_ANIMATION_TIMER) TickOverlayAnimation(hwnd, GetTickCount64());
         return 0;
 
     case WM_DPICHANGED: {
@@ -181,6 +189,7 @@ LRESULT CALLBACK OverlayWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
         return 0;
 
     case WM_APP_HIDE_OVERLAY:
+        KillTimer(hwnd, OVERLAY_ANIMATION_TIMER);
         ShowWindow(hwnd, SW_HIDE);
         ::OverlayHistory.clear();
         InvalidateOverlayCache();

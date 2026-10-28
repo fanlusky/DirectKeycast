@@ -207,6 +207,9 @@ VisualPtr BuildAppearancePage()
     auto preview = std::make_shared<dkui::OverlayPreview>();
     preview->SetMargin({0.0f, 16.0f, 0.0f, 0.0f});
     previewStack->AddChild(preview);
+    g_syncers.push_back([weak = std::weak_ptr<dkui::OverlayPreview>(preview)]() {
+        if (auto control = weak.lock()) control->InvalidateMeasure();
+    });
     auto previewSection = std::make_shared<dkui::Section>(previewStack);
 
     std::vector<std::wstring> sizeLabels;
@@ -239,7 +242,8 @@ VisualPtr BuildOverlayPage()
     auto section = MakeSection({
         Row(L"显示按键浮层", L"关闭后可在托盘菜单或按 Ctrl + Alt + Shift + F11 重新开启", MakeToggle(&AppConfig::enabled)),
         Row(L"显示鼠标按键", L"同时显示鼠标点击与滚轮", MakeToggle(&AppConfig::showMouse)),
-        Row(L"自动隐藏", L"无输入多久后隐藏浮层", MakeNumberChoice({L"0.5 秒", L"1 秒", L"1.5 秒", L"2 秒", L"3 秒", L"5 秒"}, {500, 1000, 1500, 2000, 3000, 5000}, &AppConfig::fadeMs)),
+        Row(L"自动隐藏", L"每排停止输入后等待此时长，再用 0.3 秒淡出", MakeNumberChoice({L"0.5 秒", L"1 秒", L"1.5 秒", L"2 秒", L"3 秒", L"5 秒"}, {500, 1000, 1500, 2000, 3000, 5000}, &AppConfig::fadeMs)),
+        Row(L"显示排数", L"当前排放满后上移，超过排数时移除最上面的一排", MakeNumberChoice({L"1 排", L"2 排", L"3 排", L"4 排", L"5 排"}, {1, 2, 3, 4, 5}, &AppConfig::rows)),
         Row(L"浮层位置", L"显示在当前屏幕工作区的哪个角落", MakeStringChoice({L"右下", L"左下", L"右上", L"左上"}, {L"bottom-right", L"bottom-left", L"top-right", L"top-left"}, &AppConfig::position)),
     });
     return MakePage(L"浮层", {section});

@@ -1,4 +1,3 @@
-#include "CTimer.h"
 #include "config.h"
 #include "d2d.h"
 #include "globals.h"
@@ -9,20 +8,10 @@
 #include "window.h"
 #include <winuser.h>
 
-CTimer g_timerHide;
-
 namespace
 {
 constexpr wchar_t kSingleInstanceMutex[] = L"Local\\DirectKeycast.SingleInstance";
 constexpr wchar_t kOverlayWindowClass[] = L"DirectKeycastClass";
-
-void OnHideWindow()
-{
-    if (::D2DHwnd)
-    {
-        PostMessage(::D2DHwnd, WM_APP_HIDE_OVERLAY, 0, 0);
-    }
-}
 
 // A second launch brings up the running instance's settings instead of starting another hook.
 void ActivateRunningInstance()
@@ -91,8 +80,6 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmd
     AddTrayIcon(hwnd);
     StartInputCapture(hwnd);
 
-    g_timerHide.OnTimedEvent = OnHideWindow;
-
     MSG msg;
     while (GetMessage(&msg, nullptr, 0, 0))
     {
@@ -111,7 +98,7 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmd
 
     UnregisterHotkeys();
     StopInputCapture();
-    g_timerHide.Stop();
+    KillTimer(hwnd, OVERLAY_ANIMATION_TIMER);
     CloseSettingsWindow();
     DestroyTrayMenuWindow();
     RemoveTrayIcon();

@@ -91,3 +91,21 @@ target_link_libraries(${MY_EXECUTABLE_NAME} PRIVATE msimeui)
 
 set_property(DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${MY_EXECUTABLE_NAME})
 set_property(TARGET ${MY_EXECUTABLE_NAME} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:${MY_EXECUTABLE_NAME}>")
+
+option(DIRECTKEYCAST_BUILD_TESTS "Build overlay layout tests" OFF)
+if(DIRECTKEYCAST_BUILD_TESTS)
+    enable_testing()
+    add_executable(overlay_layout_tests
+        tests/overlay_layout_tests.cpp
+        src/d2d.cpp
+        src/utils.cpp
+        src/theme.cpp
+    )
+    target_include_directories(overlay_layout_tests PRIVATE includes)
+    target_compile_definitions(overlay_layout_tests PRIVATE UNICODE _UNICODE NOMINMAX)
+    if(MSVC)
+        target_compile_options(overlay_layout_tests PRIVATE /utf-8)
+    endif()
+    target_link_libraries(overlay_layout_tests PRIVATE msimeui)
+    add_test(NAME overlay_layout COMMAND overlay_layout_tests)
+endif()

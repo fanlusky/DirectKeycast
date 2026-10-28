@@ -41,6 +41,8 @@ Left-click the tray icon (or run `directkeycast.exe` again) to open the settings
 
 Settings are saved to `%LOCALAPPDATA%\DirectKeycast\config.toml`; `assets\config\config.toml` documents every key.
 
+The overlay supports 1–5 rows. Choose **显示排数** on the **浮层** settings page. When a row is full, it moves upward and input continues on a new bottom row; the oldest row disappears when the limit is reached. Shortcuts stay together on the same row. Each row keeps its own idle deadline when it moves upward. After the configured idle delay, that row fades out linearly over 300 ms; typing on another row does not extend its lifetime. The transparent window keeps a fixed capacity while typing to avoid resize flicker. The config key is `[overlay].rows` (default: `1`).
+
 ## Hotkeys
 
 - `Ctrl + Alt + Shift + F11`: show / hide the key overlay.

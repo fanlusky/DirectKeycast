@@ -1,5 +1,4 @@
 #include "hook.h"
-#include "CTimer.h"
 #include "d2d.h"
 #include "globals.h"
 #include "settings.h"
@@ -10,8 +9,6 @@
 #include <unordered_map>
 #include <vector>
 #include <winuser.h>
-
-extern CTimer g_timerHide;
 
 enum ModifierKey
 {
@@ -51,8 +48,6 @@ void AppendStroke(std::vector<std::wstring> keys, bool modifierOnly = false);
 
 namespace
 {
-constexpr int kFadeFallbackMs = 1500;
-
 HWND g_uiHwnd = nullptr;
 HANDLE g_hookThread = nullptr;
 DWORD g_hookThreadId = 0;
@@ -104,7 +99,6 @@ void CastMouseButton(const wchar_t *label, POINT pt)
     {
         return;
     }
-    PulseOverlay();
     std::wstring key(label);
     AppendStroke({key.substr(1, key.size() - 2)});
 }
@@ -116,11 +110,7 @@ void PulseOverlay()
     {
         return;
     }
-    if (!IsWindowVisible(::D2DHwnd))
-    {
-        ShowWindow(::D2DHwnd, SW_SHOWNOACTIVATE);
-    }
-    g_timerHide.Start(::KeycastConfig.fadeMs > 0 ? ::KeycastConfig.fadeMs : kFadeFallbackMs, false, true);
+    SetTimer(::D2DHwnd, OVERLAY_ANIMATION_TIMER, 16, nullptr);
 }
 
 void UpdateMouseRawInput()
@@ -211,7 +201,6 @@ void HandlePostedKeyEvent(WPARAM wParam, DWORD vkCode)
     {
     case WM_KEYDOWN:
     case WM_SYSKEYDOWN:
-        PulseOverlay();
         HandleKeyDown(&info);
         break;
     case WM_KEYUP:
@@ -422,10 +411,15 @@ void AppendStroke(std::vector<std::wstring> keys, bool modifierOnly)
     {
         return;
     }
+    const ULONGLONG now = GetTickCount64();
+    TickOverlayAnimation(nullptr, now);
+    PulseOverlay();
     auto &history = ::OverlayHistory;
+    bool startsRow = false;
     // Replace the provisional modifier caps when their chord arrives.
     if (!history.empty() && history.back().modifierOnly && std::all_of(history.back().keys.begin(), history.back().keys.end(), [&](const std::wstring &key) { return std::find(keys.begin(), keys.end(), key) != keys.end(); }))
     {
+        startsRow = history.back().startsRow;
         history.pop_back();
     }
     if (!history.empty() && history.back().keys == keys && !modifierOnly)
@@ -437,14 +431,15 @@ void AppendStroke(std::vector<std::wstring> keys, bool modifierOnly)
             {
                 ++history.back().repeat;
             }
+            history.back().updatedAt = now;
             InvalidateOverlayCache();
             RequestOverlayRepaint();
             return;
         }
     }
-    history.push_back({std::move(keys), 1, modifierOnly});
+    history.push_back({std::move(keys), 1, modifierOnly, now, startsRow});
     // Bound stored history as well as the measured visible row.
-    if (history.size() > 64)
+    if (history.size() > 4096)
     {
         history.erase(history.begin());
     }
