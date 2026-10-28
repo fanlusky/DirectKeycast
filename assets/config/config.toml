@@ -11,9 +11,9 @@ font = "Cascadia Mono"
 default_font = "Microsoft YaHei"
 # 字体大小（px），可选：12–32
 font_size = 24
-# 彩虹文字（每个按键片段使用不同颜色）
-rainbow_text = true
-# 浮层背景不透明度，范围 0.35–1.0
+# 彩虹文字（历史键帽使用不同颜色，最新按键使用黄色）
+rainbow_text = false
+# 键帽背景不透明度，范围 0.35–1.0
 bg_opacity = 0.75
 # 圆角半径，可选：8 / 12 / 16
 corner_radius = 12.0

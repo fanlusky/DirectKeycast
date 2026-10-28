@@ -1,4 +1,5 @@
 #pragma once
+#include "d2d.h"
 #include "svg_icons.h"
 
 #include "msimeui/Controls.h"
@@ -378,11 +379,6 @@ class OverlayPreview : public msimeui::Visual
   private:
     void EnsureLayouts();
 
-    std::wstring cachedFont_;
-    float cachedSize_ = 0.0f;
-    std::vector<Microsoft::WRL::ComPtr<IDWriteTextLayout>> layouts_;
-    std::vector<float> widths_;
-    float textWidth_ = 0.0f;
-    float textHeight_ = 0.0f;
+    OverlayLayout layout_;
 };
 } // namespace dkui

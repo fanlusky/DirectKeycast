@@ -1865,9 +1865,8 @@ void AppLogo::Render(msimeui::DeviceResources &deviceResources)
 //
 namespace
 {
-const wchar_t *const kPreviewSample = L"git<Space>push<Enter><LCtrl-s>";
+const std::vector<OverlayStroke> kPreviewSample = {{{L"A"}}, {{L"S"}}, {{L"D"}}, {{L"F"}}, {{L"Space"}}, {{L"LCtrl", L"C"}}};
 constexpr float kPreviewHeight = 150.0f;
-constexpr float kOverlayMargin = 8.0f; // matches OnPaint() in d2d.cpp
 } // namespace
 
 OverlayPreview::OverlayPreview() = default;
@@ -1884,31 +1883,7 @@ void OverlayPreview::Arrange(const RectF &finalRect)
 
 void OverlayPreview::EnsureLayouts()
 {
-    const std::wstring &font = ::fontName.empty() ? ::backupFont : ::fontName;
-    const float size = ::KeycastConfig.fontSize;
-    if (!layouts_.empty() && font == cachedFont_ && size == cachedSize_)
-    {
-        return;
-    }
-    cachedFont_ = font;
-    cachedSize_ = size;
-    layouts_.clear();
-    widths_.clear();
-    textWidth_ = 0.0f;
-    textHeight_ = 0.0f;
-    for (const auto &word : splitString(kPreviewSample))
-    {
-        auto layout = CreateLayout(word, font, size, DWRITE_FONT_WEIGHT_NORMAL, kUnboundedWidth, false);
-        if (!layout)
-        {
-            continue;
-        }
-        const SizeF wordSize = LayoutSize(layout.Get());
-        layouts_.push_back(layout);
-        widths_.push_back(wordSize.width);
-        textWidth_ += wordSize.width;
-        textHeight_ = (std::max)(textHeight_, wordSize.height);
-    }
+    layout_.Build(kPreviewSample, (std::max)(1.0f, bounds_.width - 32.0f));
 }
 
 void OverlayPreview::Render(msimeui::DeviceResources &deviceResources)
@@ -1920,29 +1895,12 @@ void OverlayPreview::Render(msimeui::DeviceResources &deviceResources)
     }
     EnsureLayouts();
     const ThemeColors &theme = GetTheme();
-    const auto &config = ::KeycastConfig;
-
     target->PushAxisAlignedClip(ToD2D(bounds_), D2D1_ANTIALIAS_MODE_ALIASED);
-    FillRounded(deviceResources, bounds_, 6.0f, theme.surfaceSubtle);
-
-    const float width = textWidth_ + kOverlayMargin * 2.0f;
-    const float height = textHeight_ + kOverlayMargin * 2.0f;
-    const float left = bounds_.x + (bounds_.width - width) * 0.5f;
-    const float top = bounds_.y + (bounds_.height - height) * 0.5f;
-    const RectF overlay = {left, top, width, height};
-    FillRounded(deviceResources, overlay, config.cornerRadius, theme.overlayBg);
-    if (config.borderThickness > 0.1f)
+    FillRounded(deviceResources, bounds_, 8.0f, ColorFromHex(IsLightThemeResolved() ? 0xe3e6ec : 0x16171b));
+    ComPtr<ID2D1SolidColorBrush> brush;
+    if (SUCCEEDED(target->CreateSolidColorBrush(theme.overlayText, brush.GetAddressOf())))
     {
-        StrokeRounded(deviceResources, overlay, config.cornerRadius, theme.overlayBorder, config.borderThickness);
-    }
-
-    const auto colors = GetOverlayTextColors();
-    float x = left + kOverlayMargin;
-    for (size_t i = 0; i < layouts_.size(); ++i)
-    {
-        const D2D1_COLOR_F color = config.rainbowText ? colors[i % colors.size()] : theme.overlayText;
-        DrawLayout(deviceResources, layouts_[i].Get(), x, top + kOverlayMargin, color);
-        x += widths_[i];
+        layout_.Draw(target, brush.Get(), D2D1::Point2F(bounds_.x + (bounds_.width - layout_.Width()) / 2, bounds_.y + (bounds_.height - layout_.Height()) / 2));
     }
     target->PopAxisAlignedClip();
 }

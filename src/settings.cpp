@@ -225,10 +225,10 @@ VisualPtr BuildAppearancePage()
     });
 
     auto lookSection = MakeSection({
-        Row(L"彩虹文字", L"每个按键片段使用不同颜色", MakeToggle(&AppConfig::rainbowText)),
-        Row(L"背景不透明度", L"", MakeNumberChoice({L"35%", L"50%", L"65%", L"75%", L"90%", L"100%"}, {0.35f, 0.50f, 0.65f, 0.75f, 0.90f, 1.00f}, &AppConfig::bgOpacity)),
-        Row(L"圆角半径", L"", MakeNumberChoice({L"8", L"12", L"16"}, {8.0f, 12.0f, 16.0f}, &AppConfig::cornerRadius)),
-        Row(L"描边宽度", L"", MakeNumberChoice({L"无", L"1", L"2", L"3"}, {0.0f, 1.0f, 2.0f, 3.0f}, &AppConfig::borderThickness)),
+        Row(L"彩虹文字", L"历史键帽使用不同颜色，最新按键以黄色高亮", MakeToggle(&AppConfig::rainbowText)),
+        Row(L"键帽不透明度", L"", MakeNumberChoice({L"35%", L"50%", L"65%", L"75%", L"90%", L"100%"}, {0.35f, 0.50f, 0.65f, 0.75f, 0.90f, 1.00f}, &AppConfig::bgOpacity)),
+        Row(L"键帽圆角", L"", MakeNumberChoice({L"8", L"12", L"16"}, {8.0f, 12.0f, 16.0f}, &AppConfig::cornerRadius)),
+        Row(L"键帽描边", L"", MakeNumberChoice({L"无", L"1", L"2", L"3"}, {0.0f, 1.0f, 2.0f, 3.0f}, &AppConfig::borderThickness)),
     });
 
     return MakePage(L"外观", {previewSection, textSection, lookSection});

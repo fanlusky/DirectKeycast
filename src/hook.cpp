@@ -5,7 +5,7 @@
 #include "settings.h"
 #include "tray_menu.h"
 #include "utils.h"
-#include <numeric>
+#include <algorithm>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -47,8 +47,7 @@ UINT GetOneModifier(DWORD vkCode);
 void ClearOneModifier(DWORD vkCode);
 void ClearAllModifiers();
 
-bool IsOnlyOneShiftPressed();
-void appendCurrentKeyAndUpdateWnd(std::wstring curKeyStr);
+void AppendStroke(std::vector<std::wstring> keys, bool modifierOnly = false);
 
 namespace
 {
@@ -106,7 +105,8 @@ void CastMouseButton(const wchar_t *label, POINT pt)
         return;
     }
     PulseOverlay();
-    appendCurrentKeyAndUpdateWnd(label);
+    std::wstring key(label);
+    AppendStroke({key.substr(1, key.size() - 2)});
 }
 } // namespace
 
@@ -299,15 +299,6 @@ void HandleKeyDown(const KBDLLHOOKSTRUCT *s)
     }
     if (ModifierKeyState > 0)
     {
-        if (IsOnlyOneShiftPressed() && KeyCastMapOnShift().count(vkeyCode))
-        {
-            auto curKeyStr = KeyCastMapOnShift().at(vkeyCode);
-            if (::KeyStringToCast.size() > static_cast<size_t>(::KeycastConfig.maxSize) || ::KeyStringToCast.size() + curKeyStr.size() > static_cast<size_t>(::KeycastConfig.maxSize))
-                ::KeyStringToCast = L"";
-            ::KeyStringToCast += curKeyStr;
-            RequestOverlayRepaint();
-            return;
-        }
         std::vector<std::wstring> modifierList;
         if ((1 << LCtrl) & ::ModifierKeyState)
         {
@@ -347,14 +338,15 @@ void HandleKeyDown(const KBDLLHOOKSTRUCT *s)
             curKeyStr = curKeyStr.substr(1, curKeyStr.size() - 2);
         }
         modifierList.push_back(curKeyStr);
-        std::wstring delimiter = L"-";
-        std::wstring curResKeyStr = std::accumulate(modifierList.begin(), modifierList.end(), std::wstring(), [&](const std::wstring &a, const std::wstring &b) { return a.empty() ? b : a + delimiter + b; });
-        curResKeyStr = L"<" + curResKeyStr + L">";
-        ::appendCurrentKeyAndUpdateWnd(curResKeyStr);
+        AppendStroke(std::move(modifierList));
         return;
     }
     auto curKeyStr = KeyCastMap().at(vkeyCode);
-    ::appendCurrentKeyAndUpdateWnd(curKeyStr);
+    if (curKeyStr.size() > 1 && curKeyStr.front() == L'<' && curKeyStr.back() == L'>')
+    {
+        curKeyStr = curKeyStr.substr(1, curKeyStr.size() - 2);
+    }
+    AppendStroke({curKeyStr});
 }
 
 void HandleModifierKeyDown(DWORD vkcode)
@@ -364,8 +356,16 @@ void HandleModifierKeyDown(DWORD vkcode)
         return;
     }
     SetOneModifier(vkcode);
-    auto curKeyStr = KeyCastMap().at(vkcode);
-    ::appendCurrentKeyAndUpdateWnd(curKeyStr);
+    std::vector<std::wstring> keys;
+    for (DWORD code : {DWORD(VK_LCONTROL), DWORD(VK_RCONTROL), DWORD(VK_LSHIFT), DWORD(VK_RSHIFT), DWORD(VK_LMENU), DWORD(VK_RMENU), DWORD(VK_LWIN), DWORD(VK_RWIN)})
+    {
+        if (GetOneModifier(code))
+        {
+            const auto &label = KeyCastMap().at(code);
+            keys.push_back(label.substr(1, label.size() - 2));
+        }
+    }
+    AppendStroke(std::move(keys), true);
 }
 
 void HandleKeyUp(const KBDLLHOOKSTRUCT *s)
@@ -385,6 +385,10 @@ void HandleModifierKeyUp(DWORD vkcode)
         return;
     }
     ClearOneModifier(vkcode);
+    if (ModifierKeyState == 0 && !::OverlayHistory.empty())
+    {
+        ::OverlayHistory.back().modifierOnly = false;
+    }
 }
 
 void SetOneModifier(DWORD vkCode)
@@ -412,65 +416,38 @@ void ClearAllModifiers()
     ::ModifierKeyState &= 0;
 }
 
-bool IsOnlyOneShiftPressed()
+void AppendStroke(std::vector<std::wstring> keys, bool modifierOnly)
 {
-    UINT state = 0;
-    ModifierKey lShift = VkCodeMap.at(VK_LSHIFT);
-    UINT mask = 1 << lShift;
-    state |= mask;
-    if (state == ::ModifierKeyState)
-    {
-        return true;
-    }
-    state = 0;
-    ModifierKey rShift = VkCodeMap.at(VK_RSHIFT);
-    mask = 1 << rShift;
-    state |= mask;
-    if (state == ::ModifierKeyState)
-    {
-        return true;
-    }
-    return false;
-}
-
-void appendCurrentKeyAndUpdateWnd(std::wstring curKeyStr)
-{
-    if (!::KeycastConfig.enabled)
+    if (!::KeycastConfig.enabled || keys.empty())
     {
         return;
     }
-    static std::wstring lastKey = L"";
-    static int counter = 1;
-    std::wstring curStrToBeAppend;
-    if (curKeyStr.empty())
+    auto &history = ::OverlayHistory;
+    // Replace the provisional modifier caps when their chord arrives.
+    if (!history.empty() && history.back().modifierOnly && std::all_of(history.back().keys.begin(), history.back().keys.end(), [&](const std::wstring &key) { return std::find(keys.begin(), keys.end(), key) != keys.end(); }))
     {
-        return;
+        history.pop_back();
     }
-    if (::KeyStringToCast.empty())
+    if (!history.empty() && history.back().keys == keys && !modifierOnly)
     {
-        counter = 1;
-        lastKey = L"";
-    }
-    if (curKeyStr == lastKey && lastKey[0] == L'<' && lastKey[lastKey.size() - 1] == L'>')
-    {
-        counter += 1;
-        size_t pos = ::KeyStringToCast.find_last_of(L'<');
-        if (pos != std::wstring::npos)
+        // Ordinary typing stays one cap per character; collapse repeated commands only.
+        if (keys.size() > 1 || keys.front().size() > 1)
         {
-            ::KeyStringToCast = ::KeyStringToCast.substr(0, pos);
-            curStrToBeAppend = curKeyStr.substr(0, curKeyStr.size() - 1) + L"x" + std::to_wstring(counter) + L">";
+            if (history.back().repeat < 9999)
+            {
+                ++history.back().repeat;
+            }
+            InvalidateOverlayCache();
+            RequestOverlayRepaint();
+            return;
         }
     }
-    else
+    history.push_back({std::move(keys), 1, modifierOnly});
+    // Bound stored history as well as the measured visible row.
+    if (history.size() > 64)
     {
-        counter = 1;
-        curStrToBeAppend = curKeyStr;
+        history.erase(history.begin());
     }
-    if (::KeyStringToCast.size() + curStrToBeAppend.size() > static_cast<size_t>(::KeycastConfig.maxSize))
-    {
-        ::KeyStringToCast = L"";
-    }
-    ::KeyStringToCast += curStrToBeAppend;
+    InvalidateOverlayCache();
     RequestOverlayRepaint();
-    lastKey = curKeyStr;
 }

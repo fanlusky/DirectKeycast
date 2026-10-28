@@ -9,88 +9,147 @@
 
 namespace
 {
-struct OverlayCache
-{
-    std::wstring text;
-    std::vector<IDWriteTextLayout *> layouts;
-    std::vector<float> widths;
-    float width = 0.0f;
-    float height = 0.0f;
-    bool valid = false;
-
-    void Clear()
-    {
-        for (auto *layout : layouts)
-        {
-            if (layout)
-            {
-                layout->Release();
-            }
-        }
-        layouts.clear();
-        widths.clear();
-        text.clear();
-        width = 0.0f;
-        height = 0.0f;
-        valid = false;
-    }
-};
-
-OverlayCache g_cache;
+constexpr float kPadding = 5.0f;
+constexpr float kGap = 6.0f;
+constexpr float kGroupGap = 14.0f;
+OverlayLayout g_layout;
+bool g_layoutValid = false;
+float g_maxWidth = 0.0f;
 
 std::pair<float, float> MeasureLayout(IDWriteTextLayout *layout)
 {
-    if (!layout)
-    {
-        return {0.0f, 0.0f};
-    }
     DWRITE_TEXT_METRICS metrics{};
-    layout->GetMetrics(&metrics);
-    return {metrics.width, metrics.height};
-}
-
-void RebuildCache(const std::wstring &text)
-{
-    g_cache.Clear();
-    g_cache.text = text;
-    if (!pDWriteFactory || !pTextFormat || text.empty())
-    {
-        g_cache.valid = true;
-        return;
-    }
-
-    const auto words = splitString(text);
-    g_cache.layouts.reserve(words.size());
-    g_cache.widths.reserve(words.size());
-    float totalW = 0.0f;
-    float totalH = 0.0f;
-    for (const auto &word : words)
-    {
-        IDWriteTextLayout *layout = nullptr;
-        HRESULT hr = pDWriteFactory->CreateTextLayout(word.c_str(), static_cast<UINT32>(word.size()), pTextFormat, FLT_MAX, FLT_MAX, &layout);
-        if (FAILED(hr) || !layout)
-        {
-            continue;
-        }
-        const auto size = MeasureLayout(layout);
-        g_cache.layouts.push_back(layout);
-        g_cache.widths.push_back(size.first);
-        totalW += size.first;
-        totalH = (std::max)(totalH, size.second);
-    }
-    g_cache.width = totalW;
-    g_cache.height = totalH;
-    g_cache.valid = true;
+    if (layout)
+        layout->GetMetrics(&metrics);
+    return {metrics.widthIncludingTrailingWhitespace, metrics.height};
 }
 
 void EnsureCache()
 {
-    if (!g_cache.valid || g_cache.text != ::KeyStringToCast)
+    MONITORINFO monitor{sizeof(MONITORINFO)};
+    GetMonitorInfo(MonitorFromWindow(::D2DHwnd, MONITOR_DEFAULTTOPRIMARY), &monitor);
+    const float maxWidth = (monitor.rcWork.right - monitor.rcWork.left) * 0.5f / GetWindowScale(::D2DHwnd);
+    if (!g_layoutValid || g_maxWidth != maxWidth)
     {
-        RebuildCache(::KeyStringToCast);
+        g_layout.Build(::OverlayHistory, maxWidth);
+        g_maxWidth = maxWidth;
+        g_layoutValid = true;
     }
 }
+
+std::wstring KeyLegend(std::wstring key)
+{
+    if (key.size() == 1 && key[0] >= L'a' && key[0] <= L'z')
+        key[0] -= L'a' - L'A';
+    if (key == L"Hom")
+        return L"Home";
+    if (key == L"Pgu")
+        return L"PgUp";
+    if (key == L"Pgd")
+        return L"PgDn";
+    if (key == L"App")
+        return L"Menu";
+    return key;
+}
 } // namespace
+
+void OverlayLayout::Build(const std::vector<OverlayStroke> &history, float maxWidth)
+{
+    caps_.clear();
+    width_ = height_ = 0.0f;
+    scale_ = 1.0f;
+    if (!pDWriteFactory || !pTextFormat || history.empty())
+        return;
+    const float unit = ::KeycastConfig.fontSize + 28.0f;
+    height_ = unit + 2.0f * kPadding;
+    float x = kPadding;
+    for (size_t group = 0; group < history.size(); ++group)
+    {
+        const auto &stroke = history[group];
+        for (size_t i = 0; i < stroke.keys.size(); ++i)
+        {
+            std::wstring legend = KeyLegend(stroke.keys[i]);
+            const bool home = legend == L"F" || legend == L"J";
+            if (i + 1 == stroke.keys.size() && stroke.repeat > 1)
+                legend += L" ×" + std::to_wstring(stroke.repeat);
+            Microsoft::WRL::ComPtr<IDWriteTextLayout> layout;
+            if (FAILED(pDWriteFactory->CreateTextLayout(legend.c_str(), static_cast<UINT32>(legend.size()), pTextFormat, FLT_MAX, FLT_MAX, layout.GetAddressOf())))
+                continue;
+            layout->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+            const auto size = MeasureLayout(layout.Get());
+            float width = (std::max)(unit, size.first + 24.0f);
+            if (stroke.keys[i] == L"Space")
+                width = (std::max)(width, unit * 2.5f);
+            if (stroke.keys[i] == L"Enter" || stroke.keys[i] == L"Backspace")
+                width = (std::max)(width, unit * 1.7f);
+            if (!caps_.empty())
+                x += i == 0 ? kGroupGap : kGap;
+            caps_.push_back({layout, x, width, size.first, size.second, group, group + 1 == history.size(), home});
+            x += width;
+        }
+    }
+    width_ = caps_.empty() ? 0.0f : x + kPadding;
+    // Keep the newest complete strokes; long histories must not grow off screen.
+    while (width_ > maxWidth && caps_.size() > 1 && caps_.front().group != caps_.back().group)
+    {
+        const size_t oldest = caps_.front().group;
+        const auto next = std::find_if(caps_.begin(), caps_.end(), [oldest](const Cap &cap) { return cap.group != oldest; });
+        const float shift = next->x - kPadding;
+        caps_.erase(caps_.begin(), next);
+        for (auto &cap : caps_)
+            cap.x -= shift;
+        width_ -= shift;
+    }
+    if (width_ > maxWidth && maxWidth > 0.0f)
+    {
+        scale_ = maxWidth / width_;
+        width_ = maxWidth;
+        height_ *= scale_;
+    }
+}
+
+void OverlayLayout::Draw(ID2D1RenderTarget *target, ID2D1SolidColorBrush *brush, D2D1_POINT_2F origin) const
+{
+    if (!target || !brush)
+        return;
+    D2D1_MATRIX_3X2_F previousTransform;
+    target->GetTransform(&previousTransform);
+    target->SetTransform(D2D1::Matrix3x2F::Scale(scale_, scale_, origin) * previousTransform);
+    const bool light = IsLightThemeResolved();
+    const float unit = ::KeycastConfig.fontSize + 28.0f;
+    const float radius = (std::min)(::KeycastConfig.cornerRadius, unit * 0.25f);
+    const auto colors = GetOverlayTextColors();
+    const auto fill = [&](D2D1_RECT_F rect, float r, D2D1_COLOR_F color) {
+        brush->SetColor(color);
+        target->FillRoundedRectangle(D2D1::RoundedRect(rect, r, r), brush);
+    };
+    for (const auto &cap : caps_)
+    {
+        const float x = origin.x + cap.x;
+        const float y = origin.y + kPadding;
+        const float faceBottom = y + unit;
+        const float opacity = ::KeycastConfig.bgOpacity;
+        // A single flat surface keeps every key separate without a raised shell.
+        fill(D2D1::RectF(x, y, x + cap.width, faceBottom), radius,
+             ColorFromHex(cap.active ? (light ? 0xf1ecd9 : 0x414036) : (light ? 0xe9ecf1 : 0x2e3139), opacity));
+        if (::KeycastConfig.borderThickness > 0.1f)
+        {
+            const float thickness = ::KeycastConfig.borderThickness;
+            brush->SetColor(ColorFromHex(cap.active ? (light ? 0xb4a77b : 0xa79b6b) : (light ? 0xbfc5ce : 0x4a4e59), cap.active ? 0.65f : 1.0f));
+            target->DrawRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(x + thickness / 2, y + thickness / 2, x + cap.width - thickness / 2, faceBottom - thickness / 2), radius, radius), brush, thickness);
+        }
+        auto ink = ColorFromHex(cap.active ? (light ? 0x827346 : 0xd5c78e) : (light ? 0x414752 : 0xc3c7cf));
+        if (::KeycastConfig.rainbowText && !cap.active)
+            ink = colors[cap.group % colors.size()];
+        brush->SetColor(ink);
+        target->DrawTextLayout(D2D1::Point2F(x + (cap.width - cap.textWidth) / 2, y + (unit - cap.textHeight) / 2 - 1), cap.layout.Get(), brush);
+        if (cap.home)
+        {
+            target->DrawLine(D2D1::Point2F(x + cap.width / 2 - 4, faceBottom - 9), D2D1::Point2F(x + cap.width / 2 + 4, faceBottom - 9), brush, 2.0f);
+        }
+    }
+    target->SetTransform(previousTransform);
+}
 
 std::vector<D2D1_COLOR_F> GetOverlayTextColors()
 {
@@ -187,12 +246,14 @@ void ResizeOverlayRenderTarget(HWND hwnd)
 
 void InvalidateOverlayCache()
 {
-    g_cache.Clear();
+    g_layout = OverlayLayout{};
+    g_layoutValid = false;
 }
 
 void ReleaseOverlayCache()
 {
-    g_cache.Clear();
+    g_layout = OverlayLayout{};
+    g_layoutValid = false;
 }
 
 void ReleaseOverlayD2D()
@@ -238,52 +299,10 @@ void OnPaint(HWND hwnd)
     }
 
     EnsureCache();
-    const ThemeColors &theme = GetTheme();
-
     pRenderTarget->BeginDraw();
     pRenderTarget->Clear(D2D1::ColorF(0, 0, 0, 0));
     pRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
-
-    if (!::KeyStringToCast.empty() && g_cache.valid && !g_cache.layouts.empty())
-    {
-        const float textMarginLeft = 8.0f;
-        const float textMarginRight = 8.0f;
-        const float textMarginTop = 8.0f;
-        const float textMarginBottom = 8.0f;
-        const float borderThickness = ::KeycastConfig.borderThickness;
-        const float radius = ::KeycastConfig.cornerRadius;
-        const float borderWidth = g_cache.width + textMarginLeft + textMarginRight;
-        const float borderHeight = g_cache.height + textMarginTop + textMarginBottom;
-
-        D2D1_ROUNDED_RECT rounded = D2D1::RoundedRect(D2D1::RectF(0.0f, 0.0f, borderWidth, borderHeight), radius, radius);
-        pBrush->SetColor(theme.overlayBg);
-        pRenderTarget->FillRoundedRectangle(rounded, pBrush);
-        if (borderThickness > 0.1f)
-        {
-            const float inset = borderThickness * 0.5f;
-            D2D1_ROUNDED_RECT outline = D2D1::RoundedRect(D2D1::RectF(inset, inset, borderWidth - inset, borderHeight - inset), radius, radius);
-            pBrush->SetColor(theme.overlayBorder);
-            pRenderTarget->DrawRoundedRectangle(outline, pBrush, borderThickness);
-        }
-
-        float curX = textMarginLeft;
-        const float textY = textMarginTop;
-        const auto colors = GetOverlayTextColors();
-        const int colorCnt = static_cast<int>(colors.size());
-        for (size_t i = 0; i < g_cache.layouts.size(); ++i)
-        {
-            if (::KeycastConfig.rainbowText)
-            {
-                pBrush->SetColor(colors[static_cast<int>(i) % colorCnt]);
-            }
-            else
-            {
-                pBrush->SetColor(theme.overlayText);
-            }
-            pRenderTarget->DrawTextLayout(D2D1::Point2F(curX, textY), g_cache.layouts[i], pBrush);
-            curX += g_cache.widths[i];
-        }
-    }
+    g_layout.Draw(pRenderTarget, pBrush, D2D1::Point2F(0.0f, 0.0f));
 
     HRESULT hr = pRenderTarget->EndDraw();
     if (hr == D2DERR_RECREATE_TARGET)
@@ -296,14 +315,8 @@ void OnPaint(HWND hwnd)
 void GetOverlayContentDipSize(float &width, float &height)
 {
     EnsureCache();
-    if (!g_cache.valid || g_cache.layouts.empty())
-    {
-        width = 32.0f;
-        height = 32.0f;
-        return;
-    }
-    width = g_cache.width + 20.0f;
-    height = g_cache.height + 20.0f;
+    width = (std::max)(32.0f, g_layout.Width());
+    height = (std::max)(32.0f, g_layout.Height());
 }
 
 void RequestOverlayRepaint()

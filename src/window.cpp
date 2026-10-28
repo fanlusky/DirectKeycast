@@ -182,7 +182,7 @@ LRESULT CALLBACK OverlayWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
 
     case WM_APP_HIDE_OVERLAY:
         ShowWindow(hwnd, SW_HIDE);
-        ::KeyStringToCast.clear();
+        ::OverlayHistory.clear();
         InvalidateOverlayCache();
         return 0;
 

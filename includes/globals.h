@@ -3,6 +3,7 @@
 #include <dwmapi.h>
 #include <dwrite.h>
 #include <string>
+#include <vector>
 #include <windows.h>
 
 inline ID2D1Factory *pD2DFactory = nullptr;
@@ -15,7 +16,14 @@ inline std::wstring fontName = L"";
 inline std::wstring defaultFont = L"Cascadia Mono";
 inline std::wstring backupFont = L"Microsoft YaHei";
 
-inline std::wstring KeyStringToCast = L"";
+// Keep physical keys separate: literal '<', '>' and '-' are valid key legends.
+struct OverlayStroke
+{
+    std::vector<std::wstring> keys;
+    unsigned int repeat = 1;
+    bool modifierOnly = false;
+};
+inline std::vector<OverlayStroke> OverlayHistory;
 inline HWND D2DHwnd = nullptr;
 inline HWND TrayMenuHwnd = nullptr;
 inline HWND SettingsHwnd = nullptr;
@@ -29,7 +37,7 @@ inline struct AppConfig
     std::wstring font = L"Cascadia Mono";
     std::wstring defaultFont = L"Microsoft YaHei";
     float fontSize = 24.0f;
-    bool rainbowText = true;
+    bool rainbowText = false;
     float bgOpacity = 0.75f;
     float cornerRadius = 12.0f;
     float borderThickness = 3.0f;

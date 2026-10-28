@@ -194,9 +194,9 @@ std::string BuildConfigText()
     out << "default_font = \"" << EscapeToml(wstring_to_string(c.defaultFont)) << "\"\n";
     out << "# 字体大小（px），可选：12–32\n";
     out << "font_size = " << static_cast<int>(c.fontSize + 0.5f) << "\n";
-    out << "# 彩虹文字（每个按键片段使用不同颜色）\n";
+    out << "# 彩虹文字（历史键帽使用不同颜色，最新按键使用黄色）\n";
     out << "rainbow_text = " << (c.rainbowText ? "true" : "false") << "\n";
-    out << "# 浮层背景不透明度，范围 0.35–1.0\n";
+    out << "# 键帽背景不透明度，范围 0.35–1.0\n";
     out << "bg_opacity = " << c.bgOpacity << "\n";
     out << "# 圆角半径，可选：8 / 12 / 16\n";
     out << "corner_radius = " << c.cornerRadius << "\n";
@@ -221,7 +221,7 @@ void ApplyParsed(const TomlTable &table)
     c.font = string_to_wstring(GetValue(table, "appearance", "font", "Cascadia Mono"));
     c.defaultFont = string_to_wstring(GetValue(table, "appearance", "default_font", "Microsoft YaHei"));
     c.fontSize = static_cast<float>(ClampInt(ParseInt(GetValue(table, "appearance", "font_size", "24"), 24), 12, 32));
-    c.rainbowText = ParseBool(GetValue(table, "appearance", "rainbow_text", "true"), true);
+    c.rainbowText = ParseBool(GetValue(table, "appearance", "rainbow_text", "false"), false);
     c.bgOpacity = ClampFloat(ParseFloat(GetValue(table, "appearance", "bg_opacity", "0.75"), 0.75f), 0.35f, 1.0f);
     c.cornerRadius = ClampFloat(ParseFloat(GetValue(table, "appearance", "corner_radius", "12"), 12.0f), 8.0f, 16.0f);
     c.borderThickness = ClampFloat(ParseFloat(GetValue(table, "appearance", "border_thickness", "3"), 3.0f), 0.0f, 3.0f);
