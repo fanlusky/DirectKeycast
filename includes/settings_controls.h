@@ -246,6 +246,29 @@ class NavItem : public msimeui::Visual
     ClickHandler onClick_;
 };
 
+// One indicator shared by all navigation items, so it can glide between them.
+class Sidebar : public msimeui::StackPanel
+{
+  public:
+    ~Sidebar() override;
+    void Select(std::shared_ptr<NavItem> item);
+    void Arrange(const msimeui::RectF &finalRect) override;
+    void Render(msimeui::DeviceResources &deviceResources) override;
+
+  private:
+    float TargetOffset() const;
+    float Offset(double now) const;
+    void StopAnimation();
+
+    std::shared_ptr<NavItem> selected_;
+    HANDLE frameTimer_ = nullptr;
+    float from_ = 0.0f;
+    float to_ = 0.0f;
+    double startedMs_ = 0.0;
+    double durationMs_ = 0.0;
+    bool positioned_ = false;
+};
+
 // msimeui's Scene only offers the mouse wheel to the root visual, and Grid does not
 // pass it on. Used as the scene root, this routes the wheel to the visual under the
 // cursor and bubbles it up through the parents until one of them scrolls.
@@ -253,6 +276,7 @@ class WheelRoutingGrid : public msimeui::Grid
 {
   public:
     bool OnMouseWheel(const POINT &point, short delta, WPARAM keyState) override;
+
 };
 
 // Vertical scroll area with a thin overlay scrollbar (msimeui's is 10 DIP wide and fully rounded).

@@ -49,6 +49,7 @@ using VisualPtr = std::shared_ptr<msimeui::Visual>;
 
 std::unique_ptr<msimeui::Window> g_window;
 std::shared_ptr<dkui::TitleBar> g_titleBar;
+std::shared_ptr<dkui::Sidebar> g_sidebar;
 std::shared_ptr<msimeui::Container> g_content;
 std::vector<PageEntry> g_pages;
 Page g_page = Page::Appearance;
@@ -319,13 +320,15 @@ void ShowPage(Page page)
     {
         g_pages[i].nav->SetSelected(i == index);
     }
+    if (g_sidebar) g_sidebar->Select(g_pages[index].nav);
     g_content->SetChild(g_pages[index].view);
     g_window->Invalidate();
 }
 
 VisualPtr BuildSidebar()
 {
-    auto sidebar = std::make_shared<msimeui::StackPanel>(0.0f);
+    auto sidebar = std::make_shared<dkui::Sidebar>();
+    g_sidebar = sidebar;
     sidebar->SetPadding({0.0f, 12.0f, 0.0f, 12.0f});
 
     auto header = std::make_shared<msimeui::HorizontalStackPanel>(9.0f);
@@ -447,6 +450,7 @@ void CloseSettingsWindow()
     }
     g_window.reset();
     g_titleBar.reset();
+    g_sidebar.reset();
     g_content.reset();
     g_pages.clear();
     g_syncers.clear();

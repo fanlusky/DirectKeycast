@@ -9,6 +9,7 @@
 #include "msimeui/Window.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 
 using Microsoft::WRL::ComPtr;
@@ -1166,11 +1167,6 @@ void NavItem::Render(msimeui::DeviceResources &deviceResources)
     {
         FillRounded(deviceResources, bounds_, 5.0f, theme.sidebarActive);
     }
-    if (selected_)
-    {
-        // Centered on the left edge of the item background.
-        FillRounded(deviceResources, {bounds_.x - 2.0f, bounds_.y + (bounds_.height - 20.0f) * 0.5f, 4.0f, 20.0f}, 2.0f, theme.accent);
-    }
 
     const bool emphasized = selected_ || hovered_;
     const float iconX = bounds_.x + 12.0f + 1.0f;
@@ -1218,6 +1214,134 @@ void NavItem::OnMouseLeave()
     hovered_ = false;
     pressed_ = false;
     InvalidateVisual();
+}
+
+//
+// Sidebar — shared sliding active indicator, matching the IME settings window.
+//
+namespace
+{
+
+double SidebarNowMs()
+{
+    return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+// CSS cubic-bezier(0.22, 1, 0.36, 1): solve x first, then sample y.
+float SidebarEase(float progress)
+{
+    float low = 0.0f, high = 1.0f;
+    for (int i = 0; i < 18; ++i)
+    {
+        const float t = (low + high) * 0.5f;
+        const float inverse = 1.0f - t;
+        const float x = 3.0f * inverse * inverse * t * 0.22f + 3.0f * inverse * t * t * 0.36f + t * t * t;
+        if (x < progress)
+            low = t;
+        else
+            high = t;
+    }
+    const float inverse = 1.0f - (low + high) * 0.5f;
+    return 1.0f - inverse * inverse * inverse;
+}
+} // namespace
+
+Sidebar::~Sidebar()
+{
+    StopAnimation();
+}
+
+void Sidebar::StopAnimation()
+{
+    if (frameTimer_)
+    {
+        // The callback only posts a paint, so waiting here cannot block on the UI thread.
+        DeleteTimerQueueTimer(nullptr, frameTimer_, INVALID_HANDLE_VALUE);
+        frameTimer_ = nullptr;
+    }
+    durationMs_ = 0.0;
+    from_ = to_;
+}
+
+float Sidebar::TargetOffset() const
+{
+    const auto &item = selected_->GetBounds();
+    return item.y - bounds_.y + (item.height - 20.0f) * 0.5f;
+}
+
+float Sidebar::Offset(double now) const
+{
+    if (durationMs_ <= 0.0 || now >= startedMs_ + durationMs_)
+        return to_;
+    const float progress = static_cast<float>(std::clamp((now - startedMs_) / durationMs_, 0.0, 1.0));
+    return from_ + (to_ - from_) * SidebarEase(progress);
+}
+
+void Sidebar::Select(std::shared_ptr<NavItem> item)
+{
+    if (selected_ == item)
+        return;
+    const double now = SidebarNowMs();
+    const float from = Offset(now);
+    selected_ = std::move(item);
+    if (!selected_)
+    {
+        StopAnimation();
+        return;
+    }
+    BOOL animations = TRUE;
+    SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &animations, 0);
+    if (!positioned_ && selected_->GetBounds().height > 0.0f)
+    {
+        to_ = TargetOffset();
+        StopAnimation();
+        positioned_ = true;
+    }
+    else if (positioned_)
+    {
+        to_ = TargetOffset();
+        if (animations && window_ && IsWindowVisible(window_->GetHandle()) && std::fabs(to_ - from) > 0.1f)
+        {
+            StopAnimation();
+            from_ = from;
+            startedMs_ = now;
+            durationMs_ = std::round(std::clamp(110.0 + std::fabs(to_ - from) * 0.9, 140.0, 280.0));
+            // Post explicit paint messages so frames also arrive while other window
+            // messages are busy; the worker never accesses the control tree.
+            if (!CreateTimerQueueTimer(&frameTimer_, nullptr, [](void *context, BOOLEAN) {
+                    const HWND hwnd = static_cast<HWND>(context);
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                    PostMessageW(hwnd, WM_PAINT, 0, 0);
+                }, window_->GetHandle(), 16, 16, WT_EXECUTEDEFAULT))
+                StopAnimation();
+        }
+        else
+            StopAnimation();
+    }
+    if (window_)
+        window_->Invalidate();
+}
+
+void Sidebar::Arrange(const RectF &finalRect)
+{
+    msimeui::StackPanel::Arrange(finalRect);
+    if (selected_ && (!positioned_ || std::fabs(TargetOffset() - to_) > 0.1f))
+    {
+        to_ = TargetOffset();
+        StopAnimation();
+        positioned_ = true;
+    }
+}
+
+void Sidebar::Render(msimeui::DeviceResources &deviceResources)
+{
+    msimeui::StackPanel::Render(deviceResources);
+    if (!positioned_ || !selected_)
+        return;
+    const double now = SidebarNowMs();
+    const float y = bounds_.y + Offset(now);
+    if (durationMs_ > 0.0 && now >= startedMs_ + durationMs_) StopAnimation();
+    FillRounded(deviceResources, {selected_->GetBounds().x - 2.0f, y, 4.0f, 20.0f}, 2.0f, GetTheme().accent);
 }
 
 //
